@@ -1,6 +1,6 @@
 
 #!/usr/bin/env python3
-"""Build an Israel Railways timetable index with GTFS diagnostics."""
+"""Build an Israel Railways timetable index from MOT GTFS."""
 
 import csv
 import io
@@ -26,12 +26,16 @@ def table(z, name):
 
 
 def train_no(route):
-    name = route.get("route_short_name", "").strip()
+    name = (route.get("route_short_name") or "").strip()
+
     match = re.search(r"(?:^|[-/])([0-9]{2,6})$", name)
+
     if match:
         return match.group(1)
+
     if re.fullmatch(r"\d{2,6}", name):
         return name
+
     return None
 
 
@@ -49,6 +53,7 @@ def main():
     print("Download size:", len(data), "bytes", flush=True)
 
     with zipfile.ZipFile(io.BytesIO(data)) as z:
+
         routes = table(z, "routes.txt")
         stops = table(z, "stops.txt")
 
@@ -60,8 +65,9 @@ def main():
 
         print("Rail routes:", len(railroutes), flush=True)
 
-        # Diagnose the actual GTFS route structure.
+        # Diagnostic samples
         print("\n=== RAIL ROUTE SAMPLES ===", flush=True)
+
         for route in list(railroutes.values())[:10]:
             print({
                 key: route.get(key)
@@ -77,6 +83,7 @@ def main():
             route_id: train_no(route)
             for route_id, route in railroutes.items()
         }
+
         route_numbers = {
             key: value
             for key, value in route_numbers.items()
@@ -92,10 +99,12 @@ def main():
         trips = {}
 
         print("\n=== RAIL TRIP SAMPLES ===", flush=True)
+
         samples = 0
         rail_trip_count = 0
 
         for trip in table(z, "trips.txt"):
+
             route_id = trip.get("route_id")
 
             if route_id not in railroutes:
@@ -116,13 +125,17 @@ def main():
                 }, flush=True)
                 samples += 1
 
-            short = trip.get("trip_short_name", "").strip()
+            # FIX: The MOT feed publishes train numbers
+            # in trip_headsign for many rail trips.
+            short = (trip.get("trip_short_name") or "").strip()
+            headsign = (trip.get("trip_headsign") or "").strip()
 
-            number = (
-                short
-                if re.fullmatch(r"\d{2,6}", short)
-                else route_numbers.get(route_id)
-            )
+            if re.fullmatch(r"\d{2,6}", short):
+                number = short
+            elif re.fullmatch(r"\d{2,6}", headsign):
+                number = headsign
+            else:
+                number = route_numbers.get(route_id)
 
             if number:
                 trips[trip["trip_id"]] = {
